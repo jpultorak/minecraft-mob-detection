@@ -1,0 +1,35 @@
+[project]
+name = "minecraft-mob-detection"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.4.4",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+]
+
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "pre-commit>=4.5.1",
+    "pyright>=1.1.408",
+    "ruff>=0.15.8",
+]
+
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.pyright]
+include = ["."]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "N"]
