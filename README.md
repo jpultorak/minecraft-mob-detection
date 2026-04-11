@@ -22,3 +22,12 @@ Computer vision project for detecting Minecraft mobs.
    ```bash
    uv run pre-commit install
    ```
+
+## Dataset
+
+Dataset from [Roboflow](https://universe.roboflow.com/minecraft-object-detection/minecraft-mob-detection).
+
+To download:
+```bash
+uv run python scripts/download_data.py
+```
