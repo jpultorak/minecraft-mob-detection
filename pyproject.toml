@@ -1,5 +1,9 @@
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
 [project]
-name = "minecraft-mob-detection"
+name = "mcdetect"
 version = "0.1.0"
 description = ""
 readme = "README.md"
@@ -12,7 +16,6 @@ dependencies = [
     "torchvision>=0.26.0",
 ]
 
-
 [dependency-groups]
 dev = [
     "ipykernel>=7.2.0",
@@ -23,6 +26,7 @@ dev = [
 
 [tool.uv]
 exclude-newer = "7 days"
+
 
 [tool.ruff]
 line-length = 100
