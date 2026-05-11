@@ -1,23 +1,31 @@
 import torch
+import wandb
 from dotenv import load_dotenv
 from ultralytics import YOLO  # pyright: ignore[reportPrivateImportUsage]
 
-load_dotenv()
 
-if torch.cuda.is_available():
-    device = "cuda"
-elif torch.backends.mps.is_available():
-    device = "mps"
-else:
-    device = "cpu"
+def main():
+    load_dotenv()
+    wandb.login()
 
-model = YOLO("weights/yolov8n.pt")
+    if torch.cuda.is_available():
+        compute_device = "cuda"
+    elif torch.backends.mps.is_available():
+        compute_device = "mps"
+    else:
+        compute_device = "cpu"
 
-model.train(
-    data="data/data.yaml",
-    epochs=50,
-    imgsz=640,
-    project="mcdetect",
-    name="yolov8n-baseline",
-    device=device,
-)
+    model = YOLO("weights/yolov8n.pt")
+
+    model.train(
+        data="data/data.yaml",
+        epochs=50,
+        imgsz=640,
+        device=compute_device,
+        project="mcdetect",
+        name="yolov8n-baseline",
+    )
+
+
+if __name__ == "__main__":
+    main()
