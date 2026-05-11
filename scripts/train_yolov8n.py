@@ -9,11 +9,11 @@ def main():
     wandb.login()
 
     if torch.cuda.is_available():
-        compute_device = "cuda"
+        device = "cuda"
     elif torch.backends.mps.is_available():
-        compute_device = "mps"
+        device = "mps"
     else:
-        compute_device = "cpu"
+        device = "cpu"
 
     model = YOLO("weights/yolov8n.pt")
 
@@ -21,7 +21,7 @@ def main():
         data="data/data.yaml",
         epochs=50,
         imgsz=640,
-        device=compute_device,
+        device=device,
         project="mcdetect",
         name="yolov8n-baseline",
     )
