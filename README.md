@@ -9,7 +9,7 @@ Computer vision project for detecting Minecraft mobs.
 
 1. Clone the repository and navigate into it:
    ```bash
-   git clone <repository-url>
+   git clone git@github.com:jpultorak/minecraft-mob-detection.git
    cd minecraft-mob-detection
    ```
 
@@ -22,3 +22,12 @@ Computer vision project for detecting Minecraft mobs.
    ```bash
    uv run pre-commit install
    ```
+
+## Dataset
+
+Dataset from [Roboflow](https://universe.roboflow.com/minecraft-object-detection/minecraft-mob-detection).
+
+To download:
+```bash
+uv run python scripts/download_data.py
+```
