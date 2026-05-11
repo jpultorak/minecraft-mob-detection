@@ -36,7 +36,7 @@ Computer vision project for detecting Minecraft mobs.
 5. Enable Weights and Biases logging for Ultralytics:
 
     ```bash
-     yolo settings wandb=True
+     uv run yolo settings wandb=True
     ```
 
 ## Dataset
