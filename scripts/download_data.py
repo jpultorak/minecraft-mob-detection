@@ -15,7 +15,7 @@ def main() -> None:
     version = project.version(10)
 
     data_dir = PROJECT_DIR / "data"
-    version.download("coco", location=str(data_dir))
+    version.download("yolov8", location=str(data_dir))
 
     zip_path = data_dir / "roboflow.zip"
     if zip_path.exists():
