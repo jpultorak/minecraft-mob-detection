@@ -23,11 +23,24 @@ Computer vision project for detecting Minecraft mobs.
    uv run pre-commit install
    ```
 
+## Training setup
+1. Copy `.env.example` into `.env`
+2. Create an account on [Roboflow](https://roboflow.com/).
+3. Create an account on [Weights & Biases](https://wandb.ai/site).
+4. Generate and copy the API keys into `.env`
+
+
 ## Dataset
 
-Dataset from [Roboflow](https://universe.roboflow.com/minecraft-object-detection/minecraft-mob-detection).
+See the dataset at [Roboflow](https://universe.roboflow.com/minecraft-object-detection/minecraft-mob-detection).
 
 To download:
 ```bash
 uv run python scripts/download_data.py
+```
+
+## Training
+To train the baseline model based on yolov8n run:
+```bash
+uv run python scripts/train_yolov8n.py
 ```
