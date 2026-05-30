@@ -1,0 +1,207 @@
+import os
+import zipfile
+from pathlib import Path
+
+import torch
+import torchvision
+import yaml
+from dotenv import load_dotenv
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
+from PIL import Image
+from roboflow import Roboflow
+from torch.utils.data import DataLoader, Dataset
+from torchvision.models.detection import fasterrcnn_resnet50_fpn
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+
+
+def ensure_dataset(data_dir: Path = Path("data")) -> Path:
+    if (data_dir / "data.yaml").exists():
+        return data_dir
+    data_dir.mkdir(parents=True, exist_ok=True)
+    version = (
+        Roboflow()
+        .workspace("minecraft-object-detection")
+        .project("minecraft-mob-detection")
+        .version(10)
+    )
+    version.download("yolov8", location=str(data_dir))
+    zip_path = data_dir / "roboflow.zip"
+    if zip_path.exists():
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(data_dir)
+        zip_path.unlink()
+    return data_dir
+
+
+class YOLODataset(Dataset):
+    def __init__(self, img_dir: Path, label_dir: Path):
+        self.img_dir = img_dir
+        self.label_dir = label_dir
+        self.images = sorted(os.listdir(img_dir))
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        img_name = self.images[idx]
+        img = Image.open(self.img_dir / img_name).convert("RGB")
+        w, h = img.size
+
+        label_path = self.label_dir / (Path(img_name).stem + ".txt")
+        boxes = []
+        labels = []
+        if label_path.exists():
+            with open(label_path) as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) != 5:
+                        continue
+                    cls_id, cx, cy, bw, bh = map(float, parts)
+                    x1 = (cx - bw / 2) * w
+                    y1 = (cy - bh / 2) * h
+                    x2 = (cx + bw / 2) * w
+                    y2 = (cy + bh / 2) * h
+                    boxes.append([x1, y1, x2, y2])
+                    labels.append(int(cls_id) + 1)
+
+        if boxes:
+            boxes = torch.tensor(boxes, dtype=torch.float32).clamp(min=0)
+            boxes[:, 0::2] = boxes[:, 0::2].clamp(max=w)
+            boxes[:, 1::2] = boxes[:, 1::2].clamp(max=h)
+            labels = torch.tensor(labels, dtype=torch.int64)
+        else:
+            boxes = torch.zeros((0, 4), dtype=torch.float32)
+            labels = torch.zeros((0,), dtype=torch.int64)
+
+        target = {
+            "boxes": boxes,
+            "labels": labels,
+            "image_id": torch.tensor([idx], dtype=torch.int64),
+            "area": (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+            if boxes.numel() > 0
+            else torch.zeros((0,)),
+            "iscrowd": torch.zeros((len(labels),), dtype=torch.uint8),
+        }
+
+        return torchvision.transforms.functional.to_tensor(img), target
+
+
+def collate_fn(batch):
+    return tuple(zip(*batch))
+
+
+class MCDetDataModule(LightningDataModule):
+    def __init__(self, data_dir: Path, batch_size: int = 4, num_workers: int = 2):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+
+    def setup(self, stage: str | None = None) -> None:
+        with open(self.data_dir / "data.yaml") as f:
+            cfg = yaml.safe_load(f)
+
+        self.class_names = cfg["names"]
+        self.num_classes = len(self.class_names) + 1
+
+        self.train_dataset = YOLODataset(
+            self.data_dir / "train" / "images", self.data_dir / "train" / "labels"
+        )
+        self.val_dataset = YOLODataset(
+            self.data_dir / "valid" / "images", self.data_dir / "valid" / "labels"
+        )
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=self.num_workers,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            collate_fn=collate_fn,
+            num_workers=self.num_workers,
+        )
+
+
+class MCDetModule(LightningModule):
+    def __init__(self, num_classes: int, lr: float = 0.005):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.model = fasterrcnn_resnet50_fpn(weights="DEFAULT")
+        in_features = self.model.roi_heads.box_predictor.cls_score.in_features
+        self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+    def forward(self, images, targets=None):
+        return self.model(images, targets)
+
+    def training_step(self, batch, batch_idx):
+        images, targets = batch
+        loss_dict = self.model(images, targets)
+        loss = sum(loss_dict.values())
+        self.log_dict({f"train/{k}": v.item() for k, v in loss_dict.items()}, on_step=True)
+        self.log("train/loss", loss, on_step=True, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        images, targets = batch
+        loss_dict = self.model(images, targets)
+        loss = sum(loss_dict.values())
+        self.log_dict({f"val/{k}": v.item() for k, v in loss_dict.items()}, on_epoch=True)
+        self.log("val/loss", loss, on_epoch=True, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        params = [p for p in self.model.parameters() if p.requires_grad]
+        optimizer = torch.optim.SGD(params, lr=self.hparams.lr, momentum=0.9, weight_decay=0.0005)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
+        return [optimizer], [scheduler]
+
+
+def main():
+    load_dotenv()
+    data_dir = ensure_dataset()
+
+    dm = MCDetDataModule(data_dir=data_dir, batch_size=4, num_workers=2)
+    dm.setup()
+
+    module = MCDetModule(num_classes=dm.num_classes, lr=0.005)
+
+    wandb_logger = WandbLogger(project="mcdetect", name="faster-rcnn-pl", log_model=False)
+    wandb_logger.experiment.config.update({
+        "epochs": 50,
+        "batch_size": dm.batch_size,
+        "backbone": "resnet50-fpn",
+        "dataset": "minecraft-mob-detection-v10",
+    })
+
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=Path("weights"),
+        filename="faster_rcnn_pl_{epoch:02d}",
+        every_n_epochs=10,
+        save_top_k=-1,
+    )
+
+    trainer = Trainer(
+        max_epochs=50,
+        accelerator="auto",
+        devices=1,
+        logger=wandb_logger,
+        callbacks=[checkpoint_callback],
+        log_every_n_steps=50,
+    )
+
+    trainer.fit(module, dm)
+
+
+if __name__ == "__main__":
+    main()
