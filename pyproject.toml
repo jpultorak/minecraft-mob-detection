@@ -26,6 +26,9 @@ dev = [
 
 [tool.uv]
 exclude-newer = "7 days"
+# Ultralytics pulls opencv-python (needs libxcb on Linux); headless is enough for cv2.
+exclude-dependencies = ["opencv-python"]
+override-dependencies = ["opencv-python-headless>=4.13.0.92"]
 
 
 [tool.ruff]
@@ -42,14 +45,14 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "N"]
 
 
 [[tool.uv.index]]
-name = "pytorch-cu126"
-url = "https://download.pytorch.org/whl/cu126"
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+    { index = "pytorch-cu128", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]
 torchvision = [
-    { index = "pytorch-cu126", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+    { index = "pytorch-cu128", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
 ]

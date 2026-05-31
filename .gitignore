@@ -22,6 +22,7 @@ wheels/
 
 # Data
 data/
+weights/
 
 # training
 runs/

@@ -1,44 +1,25 @@
 import os
-import zipfile
 from pathlib import Path
 
 import torch
 import torchvision
 import yaml
+from dataset import ensure_dataset
 from dotenv import load_dotenv
 from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from PIL import Image
-from roboflow import Roboflow
 from torch.utils.data import DataLoader, Dataset
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 
-def ensure_dataset(data_dir: Path = Path("data")) -> Path:
-    if (data_dir / "data.yaml").exists():
-        return data_dir
-    data_dir.mkdir(parents=True, exist_ok=True)
-    version = (
-        Roboflow()
-        .workspace("minecraft-object-detection")
-        .project("minecraft-mob-detection")
-        .version(10)
-    )
-    version.download("yolov8", location=str(data_dir))
-    zip_path = data_dir / "roboflow.zip"
-    if zip_path.exists():
-        with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(data_dir)
-        zip_path.unlink()
-    return data_dir
-
-
 class YOLODataset(Dataset):
-    def __init__(self, img_dir: Path, label_dir: Path):
+    def __init__(self, img_dir: Path, label_dir: Path, max_size: int = 640):
         self.img_dir = img_dir
         self.label_dir = label_dir
+        self.max_size = max_size
         self.images = sorted(os.listdir(img_dir))
 
     def __len__(self):
@@ -48,6 +29,10 @@ class YOLODataset(Dataset):
         img_name = self.images[idx]
         img = Image.open(self.img_dir / img_name).convert("RGB")
         w, h = img.size
+        if max(w, h) > self.max_size:
+            scale = self.max_size / max(w, h)
+            w, h = int(w * scale), int(h * scale)
+            img = img.resize((w, h), Image.BILINEAR)
 
         label_path = self.label_dir / (Path(img_name).stem + ".txt")
         boxes = []
@@ -144,20 +129,36 @@ class MCDetModule(LightningModule):
     def forward(self, images, targets=None):
         return self.model(images, targets)
 
-    def training_step(self, batch, batch_idx):
-        images, targets = batch
+    def _compute_loss(self, images, targets):
+        # torchvision detection models return a loss dict only in train mode.
         loss_dict = self.model(images, targets)
         loss = sum(loss_dict.values())
-        self.log_dict({f"train/{k}": v.item() for k, v in loss_dict.items()}, on_step=True)
-        self.log("train/loss", loss, on_step=True, prog_bar=True)
+        return loss, loss_dict
+
+    def training_step(self, batch, batch_idx):
+        images, targets = batch
+        loss, loss_dict = self._compute_loss(images, targets)
+        batch_size = len(images)
+        self.log_dict(
+            {f"train/{k}": v.item() for k, v in loss_dict.items()},
+            on_step=True,
+            batch_size=batch_size,
+        )
+        self.log("train/loss", loss, on_step=True, prog_bar=True, batch_size=batch_size)
         return loss
 
     def validation_step(self, batch, batch_idx):
         images, targets = batch
-        loss_dict = self.model(images, targets)
-        loss = sum(loss_dict.values())
-        self.log_dict({f"val/{k}": v.item() for k, v in loss_dict.items()}, on_epoch=True)
-        self.log("val/loss", loss, on_epoch=True, prog_bar=True)
+        batch_size = len(images)
+        with torch.no_grad():
+            self.model.train()
+            loss, loss_dict = self._compute_loss(images, targets)
+        self.log_dict(
+            {f"val/{k}": v.item() for k, v in loss_dict.items()},
+            on_epoch=True,
+            batch_size=batch_size,
+        )
+        self.log("val/loss", loss, on_epoch=True, prog_bar=True, batch_size=batch_size)
         return loss
 
     def configure_optimizers(self):
@@ -167,22 +168,50 @@ class MCDetModule(LightningModule):
         return [optimizer], [scheduler]
 
 
+def _warn_if_low_gpu_memory(min_free_gib: float = 6.0) -> None:
+    if not torch.cuda.is_available():
+        return
+    free_bytes, total_bytes = torch.cuda.mem_get_info()
+    free_gib = free_bytes / (1024**3)
+    total_gib = total_bytes / (1024**3)
+    if free_gib < min_free_gib:
+        print(
+            f"WARNING: only {free_gib:.1f} GiB GPU memory free "
+            f"(of {total_gib:.1f} GiB). Faster R-CNN needs several GiB free — "
+            "stop other GPU jobs (`nvidia-smi`) before training."
+        )
+
+
 def main():
     load_dotenv()
-    data_dir = ensure_dataset()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.set_float32_matmul_precision("medium")
+        _warn_if_low_gpu_memory()
 
-    dm = MCDetDataModule(data_dir=data_dir, batch_size=4, num_workers=2)
+    data_dir = ensure_dataset()
+    batch_size = 2
+    accumulate_grad_batches = 2
+
+    dm = MCDetDataModule(data_dir=data_dir, batch_size=batch_size, num_workers=2)
     dm.setup()
 
     module = MCDetModule(num_classes=dm.num_classes, lr=0.005)
 
+    precision = "bf16-mixed" if torch.cuda.is_bf16_supported() else "16-mixed"
+
     wandb_logger = WandbLogger(project="mcdetect", name="faster-rcnn-pl", log_model=False)
-    wandb_logger.experiment.config.update({
-        "epochs": 50,
-        "batch_size": dm.batch_size,
-        "backbone": "resnet50-fpn",
-        "dataset": "minecraft-mob-detection-v10",
-    })
+    wandb_logger.experiment.config.update(
+        {
+            "epochs": 50,
+            "batch_size": dm.batch_size,
+            "accumulate_grad_batches": accumulate_grad_batches,
+            "image_max_size": 640,
+            "precision": precision,
+            "backbone": "resnet50-fpn",
+            "dataset": "minecraft-mob-detection-v10",
+        }
+    )
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=Path("weights"),
@@ -195,6 +224,8 @@ def main():
         max_epochs=50,
         accelerator="auto",
         devices=1,
+        precision=precision,
+        accumulate_grad_batches=accumulate_grad_batches,
         logger=wandb_logger,
         callbacks=[checkpoint_callback],
         log_every_n_steps=50,
