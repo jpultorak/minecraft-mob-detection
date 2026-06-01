@@ -15,7 +15,7 @@ def main():
     else:
         device = "cpu"
 
-    model = YOLO("weights/yolov8n.pt")
+    model = YOLO("yolov8n.pt")
 
     model.train(
         data="data/data.yaml",
