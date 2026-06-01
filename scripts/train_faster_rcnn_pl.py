@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 import torch
-import torchvision
+import torchvision.transforms as transforms
 import yaml
 from dataset import ensure_dataset
 from dotenv import load_dotenv
@@ -11,16 +11,17 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
+from torchmetrics.detection import MeanAveragePrecision
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 
 class YOLODataset(Dataset):
-    def __init__(self, img_dir: Path, label_dir: Path, max_size: int = 640):
+    def __init__(self, img_dir: Path, label_dir: Path):
         self.img_dir = img_dir
         self.label_dir = label_dir
-        self.max_size = max_size
         self.images = sorted(os.listdir(img_dir))
+        self.to_tensor = transforms.ToTensor()
 
     def __len__(self):
         return len(self.images)
@@ -29,10 +30,6 @@ class YOLODataset(Dataset):
         img_name = self.images[idx]
         img = Image.open(self.img_dir / img_name).convert("RGB")
         w, h = img.size
-        if max(w, h) > self.max_size:
-            scale = self.max_size / max(w, h)
-            w, h = int(w * scale), int(h * scale)
-            img = img.resize((w, h), Image.BILINEAR)
 
         label_path = self.label_dir / (Path(img_name).stem + ".txt")
         boxes = []
@@ -70,7 +67,7 @@ class YOLODataset(Dataset):
             "iscrowd": torch.zeros((len(labels),), dtype=torch.uint8),
         }
 
-        return torchvision.transforms.functional.to_tensor(img), target
+        return self.to_tensor(img), target
 
 
 def collate_fn(batch):
@@ -105,6 +102,8 @@ class MCDetDataModule(LightningDataModule):
             shuffle=True,
             collate_fn=collate_fn,
             num_workers=self.num_workers,
+            pin_memory=True,
+            persistent_workers=self.num_workers > 0,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -114,6 +113,8 @@ class MCDetDataModule(LightningDataModule):
             shuffle=False,
             collate_fn=collate_fn,
             num_workers=self.num_workers,
+            pin_memory=True,
+            persistent_workers=self.num_workers > 0,
         )
 
 
@@ -123,16 +124,17 @@ class MCDetModule(LightningModule):
         self.save_hyperparameters()
 
         self.model = fasterrcnn_resnet50_fpn(weights="DEFAULT")
-        in_features = self.model.roi_heads.box_predictor.cls_score.in_features
+        in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
         self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+        self.map_metric = MeanAveragePrecision(iou_type="bbox")
 
     def forward(self, images, targets=None):
         return self.model(images, targets)
 
     def _compute_loss(self, images, targets):
-        # torchvision detection models return a loss dict only in train mode.
         loss_dict = self.model(images, targets)
-        loss = sum(loss_dict.values())
+        loss = sum(loss_dict.values(), torch.tensor(0.0, device=self.device))
         return loss, loss_dict
 
     def training_step(self, batch, batch_idx):
@@ -149,21 +151,23 @@ class MCDetModule(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         images, targets = batch
-        batch_size = len(images)
-        with torch.no_grad():
-            self.model.train()
-            loss, loss_dict = self._compute_loss(images, targets)
-        self.log_dict(
-            {f"val/{k}": v.item() for k, v in loss_dict.items()},
-            on_epoch=True,
-            batch_size=batch_size,
-        )
-        self.log("val/loss", loss, on_epoch=True, prog_bar=True, batch_size=batch_size)
-        return loss
+        preds = self.model(images)
+
+        self.map_metric.update(preds, targets)
+
+    def on_validation_epoch_end(self):
+
+        metrics = self.map_metric.compute()
+        self.log("val/mAP50", metrics["map_50"], prog_bar=True)
+        self.log("val/mAP50-95", metrics["map"], prog_bar=True)
+
+        self.map_metric.reset()
 
     def configure_optimizers(self):
         params = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.SGD(params, lr=self.hparams.lr, momentum=0.9, weight_decay=0.0005)
+        optimizer = torch.optim.SGD(
+            params, lr=self.hparams["lr"], momentum=0.9, weight_decay=0.0005
+        )
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
         return [optimizer], [scheduler]
 
@@ -193,7 +197,7 @@ def main():
     batch_size = 2
     accumulate_grad_batches = 2
 
-    dm = MCDetDataModule(data_dir=data_dir, batch_size=batch_size, num_workers=2)
+    dm = MCDetDataModule(data_dir=data_dir, batch_size=batch_size, num_workers=4)
     dm.setup()
 
     module = MCDetModule(num_classes=dm.num_classes, lr=0.005)
@@ -206,7 +210,6 @@ def main():
             "epochs": 50,
             "batch_size": dm.batch_size,
             "accumulate_grad_batches": accumulate_grad_batches,
-            "image_max_size": 640,
             "precision": precision,
             "backbone": "resnet50-fpn",
             "dataset": "minecraft-mob-detection-v10",
