@@ -22,3 +22,10 @@ wheels/
 
 # Data
 data/
+
+# training
+runs/
+wandb/
+
+# models
+*.pt
