@@ -127,7 +127,7 @@ class MCDetModule(LightningModule):
         in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
         self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
-        self.map_metric = MeanAveragePrecision(iou_type="bbox")
+        self.map_metric = MeanAveragePrecision(iou_type="bbox", class_metrics=True)
 
     def forward(self, images, targets=None):
         return self.model(images, targets)
@@ -159,7 +159,13 @@ class MCDetModule(LightningModule):
 
         metrics = self.map_metric.compute()
         self.log("val/mAP50", metrics["map_50"], prog_bar=True)
-        self.log("val/mAP50-95", metrics["map"], prog_bar=True)
+        self.log("val/mAP75", metrics["map_75"])
+        self.log("val/mAP50_95", metrics["map"], prog_bar=True)
+        self.log("val/mar_100", metrics["mar_100"])
+        if metrics.get("map_per_class") is not None and len(metrics["map_per_class"]) > 0:
+            for cls_idx, ap in zip(metrics["classes"], metrics["map_per_class"]):
+                cls_name = self.trainer.datamodule.class_names[int(cls_idx) - 1]  # type: ignore
+                self.log(f"val/AP/{cls_name}", ap)
 
         self.map_metric.reset()
 
