@@ -1,13 +1,19 @@
 # Makefile for Minecraft Mob Detection training and data preparation
 
-.PHONY: help data train-yolov8n train-rtdetr detect-video
+.PHONY: help setup data train-yolov8n train-rtdetr resume detect-video
 
 help:
 	@echo "Available commands:"
+	@echo "  make setup           - Run uv sync and configure Weights & Biases for Ultralytics"
 	@echo "  make data            - Download, filter to 5 classes, and rebalance the dataset splits"
 	@echo "  make train-yolov8n   - Train YOLOv8n baseline (configured for 8GB system RAM & RTX 3060 VRAM)"
 	@echo "  make train-rtdetr    - Train RT-DETR model (configured for 8GB system RAM & RTX 3060 VRAM)"
+	@echo "  make resume          - Resume training from the last checkpoint"
 	@echo "  make detect-video VIDEO=path/to/video.mp4  - Run mob detection on a video"
+
+setup:
+	uv sync
+	uv run yolo settings wandb=True
 
 data:
 	uv run python scripts/download_data.py
