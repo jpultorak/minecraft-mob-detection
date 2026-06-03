@@ -1,5 +1,6 @@
-import wandb
 from dotenv import load_dotenv
+
+import wandb
 
 load_dotenv()
 api = wandb.Api()
