@@ -47,7 +47,7 @@ def main() -> None:
         project="mcdetect",
         workers=2,  # Keep low to prevent system RAM OOM
         imgsz=640,
-        device="auto",
+        device=0,
     )
 
 
