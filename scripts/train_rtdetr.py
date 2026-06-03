@@ -12,8 +12,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train RT-DETR on the Minecraft mob dataset.")
     parser.add_argument(
         "--model",
-        default="rtdetr-x.pt",
-        help="Ultralytics RT-DETR weights (e.g. rtdetr-l.pt, rtdetr-x.pt).",
+        default="weights/rtdetr-x.pt",
+        help="Ultralytics RT-DETR weights (e.g. weights/rtdetr-l.pt, weights/rtdetr-x.pt).",
     )
     parser.add_argument("--data", default="data/data.yaml", help="Dataset yaml path.")
     parser.add_argument("--epochs", type=int, default=100, help="Training epochs.")
