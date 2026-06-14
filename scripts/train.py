@@ -1,8 +1,9 @@
 import argparse
+from pathlib import Path
 
 from dataset import ensure_dataset
 from dotenv import load_dotenv
-from ultralytics import YOLO  # pyright: ignore[reportPrivateImportUsage]
+from ultralytics import YOLO, settings  # pyright: ignore[reportPrivateImportUsage]
 
 import wandb
 
@@ -39,6 +40,21 @@ def log_best_model(trainer) -> None:
 def main() -> None:
     args = parse_args()
     load_dotenv()
+
+    # Dynamically configure Ultralytics paths relative to the current working directory.
+    # This prevents PermissionError on HPC clusters where global configuration files
+    # might point to incorrect/outdated path structures (e.g. /ziob instead of /Ziob).
+    current_project_dir = Path.cwd()
+    updates = {}
+    if settings.get("runs_dir") != str(current_project_dir / "runs"):
+        updates["runs_dir"] = str(current_project_dir / "runs")
+    if settings.get("weights_dir") != str(current_project_dir / "weights"):
+        updates["weights_dir"] = str(current_project_dir / "weights")
+
+    if updates:
+        print(f"Updating Ultralytics settings: {updates}")
+        settings.update(updates)
+
     wandb.login()
     ensure_dataset()
 
