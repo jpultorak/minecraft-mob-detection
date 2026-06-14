@@ -33,7 +33,7 @@ test -d .venv || uv venv .venv --python 3.14
 uv sync
 
 export YOLO_CONFIG_DIR="$PROJECT_ROOT/.ultralytics"
-uv run yolo settings wandb=True
+uv run python -c "from ultralytics import settings; settings.update({'wandb': True})"
 
 # ── Defaults (overridable via --export) ────────────────────────────
 MODEL=${MODEL:-weights/rtdetr-l.pt}

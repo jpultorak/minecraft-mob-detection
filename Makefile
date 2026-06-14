@@ -1,4 +1,9 @@
-.PHONY: help setup data resume detect-video slurm-rtdetr-l slurm-yolov8n slurm-yolo26m
+# Fix UV_CACHE_DIR if it points to incorrect /ziob mount path on cluster
+ifneq ($(findstring /ziob/,$(UV_CACHE_DIR)),)
+    export UV_CACHE_DIR := $(subst /ziob/,/Ziob/,$(UV_CACHE_DIR))
+endif
+
+.PHONY: help setup data resume detect-video slurm-rtdetr-l slurm-rtdetr-x slurm-yolov8n slurm-yolo26m slurm-submit-all
 
 help:
 	@echo "Available commands:"
@@ -7,8 +12,10 @@ help:
 	@echo "  make resume          - Resume training from the last checkpoint"
 	@echo "  make detect-video VIDEO=path/to/video.mp4  - Run mob detection on a video"
 	@echo "  make slurm-rtdetr-l  - Submit RT-DETR-L training on Slurm (2x RTX 3080)"
+	@echo "  make slurm-rtdetr-x  - Submit RT-DETR-X training on Slurm (2x RTX 3080)"
 	@echo "  make slurm-yolov8n   - Submit YOLOv8n training on Slurm (2x RTX 3080)"
 	@echo "  make slurm-yolo26m   - Submit YOLO26m training on Slurm (2x RTX 3080)"
+	@echo "  make slurm-submit-all - Submit YOLOv8n, YOLO26m, RT-DETR-L, and RT-DETR-X training jobs to Slurm"
 
 setup:
 	uv sync
@@ -24,6 +31,10 @@ slurm-rtdetr-l:
 	sbatch --export=ALL,MODEL=weights/rtdetr-l.pt,BATCH=16,EPOCHS=100,RUN_NAME=rtdetr-l-2gpu \
 		scripts/train_slurm.sh
 
+slurm-rtdetr-x:
+	sbatch --export=ALL,MODEL=rtdetr-x.pt,BATCH=8,EPOCHS=100,RUN_NAME=rtdetr-x-2gpu \
+		scripts/train_slurm.sh
+
 slurm-yolov8n:
 	sbatch --export=ALL,MODEL=weights/yolov8n.pt,BATCH=32,EPOCHS=100,RUN_NAME=yolov8n-2gpu \
 		scripts/train_slurm.sh
@@ -31,3 +42,9 @@ slurm-yolov8n:
 slurm-yolo26m:
 	sbatch --export=ALL,MODEL=yolo26m.pt,BATCH=32,EPOCHS=100,RUN_NAME=yolo26m-2gpu \
 		scripts/train_slurm.sh
+
+slurm-submit-all:
+	$(MAKE) slurm-yolov8n
+	$(MAKE) slurm-yolo26m
+	$(MAKE) slurm-rtdetr-l
+	$(MAKE) slurm-rtdetr-x
