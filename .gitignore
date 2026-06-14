@@ -30,3 +30,6 @@ wandb/
 # models
 *.pt
 weights/
+
+# ultralytics local config
+.ultralytics/

@@ -1,9 +1,47 @@
+# ruff: noqa: E402
 import argparse
+import json
+import os
 from pathlib import Path
+
+
+def sanitize_path(path_str: str) -> str:
+    """Force lowercase ziob to capitalized Ziob to prevent permission errors on cluster nodes."""
+    if path_str.startswith("/ziob/"):
+        return "/Ziob/" + path_str[6:]
+    return path_str
+
+
+# Set up local/isolated Ultralytics configuration directory.
+# This prevents environment-specific path issues across different machines/clusters,
+# and avoids loading stale paths (like /ziob) from the global settings.json.
+# We must configure this BEFORE importing ultralytics.
+project_dir = Path(__file__).absolute().parent.parent
+project_dir_str = sanitize_path(str(project_dir))
+config_dir = Path(project_dir_str) / ".ultralytics"
+config_dir.mkdir(exist_ok=True)
+
+settings_path = config_dir / "settings.json"
+settings_data = {}
+if settings_path.exists():
+    try:
+        with open(settings_path) as f:
+            settings_data = json.load(f)
+    except Exception:
+        pass
+
+# Force correct runs and weights paths for the current environment
+settings_data["runs_dir"] = sanitize_path(str(Path(project_dir_str) / "runs"))
+settings_data["weights_dir"] = sanitize_path(str(Path(project_dir_str) / "weights"))
+
+with open(settings_path, "w") as f:
+    json.dump(settings_data, f, indent=2)
+
+os.environ["YOLO_CONFIG_DIR"] = str(config_dir)
 
 from dataset import ensure_dataset
 from dotenv import load_dotenv
-from ultralytics import YOLO, settings  # pyright: ignore[reportPrivateImportUsage]
+from ultralytics import YOLO  # pyright: ignore[reportPrivateImportUsage]
 
 import wandb
 
@@ -40,21 +78,6 @@ def log_best_model(trainer) -> None:
 def main() -> None:
     args = parse_args()
     load_dotenv()
-
-    # Dynamically configure Ultralytics paths relative to the current working directory.
-    # This prevents PermissionError on HPC clusters where global configuration files
-    # might point to incorrect/outdated path structures (e.g. /ziob instead of /Ziob).
-    current_project_dir = Path.cwd()
-    updates = {}
-    if settings.get("runs_dir") != str(current_project_dir / "runs"):
-        updates["runs_dir"] = str(current_project_dir / "runs")
-    if settings.get("weights_dir") != str(current_project_dir / "weights"):
-        updates["weights_dir"] = str(current_project_dir / "weights")
-
-    if updates:
-        print(f"Updating Ultralytics settings: {updates}")
-        settings.update(updates)
-
     wandb.login()
     ensure_dataset()
 
