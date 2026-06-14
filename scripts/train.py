@@ -33,6 +33,7 @@ if settings_path.exists():
 # Force correct runs and weights paths for the current environment
 settings_data["runs_dir"] = sanitize_path(str(Path(project_dir_str) / "runs"))
 settings_data["weights_dir"] = sanitize_path(str(Path(project_dir_str) / "weights"))
+settings_data["wandb"] = True
 
 with open(settings_path, "w") as f:
     json.dump(settings_data, f, indent=2)
