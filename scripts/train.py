@@ -19,6 +19,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=50, help="Training epochs.")
     parser.add_argument("--batch", type=int, default=8, help="Batch size.")
     parser.add_argument("--name", required=True, help="Run name for tracking.")
+    parser.add_argument(
+        "--device",
+        default="0",
+        help="Device(s) to train on, e.g. '0' or '0,1' for multi-GPU.",
+    )
     return parser.parse_args()
 
 
@@ -37,6 +42,12 @@ def main() -> None:
     wandb.login()
     ensure_dataset()
 
+    # Parse device string: "0" -> 0, "0,1" -> [0, 1]
+    if "," in args.device:
+        device = [int(d) for d in args.device.split(",")]
+    else:
+        device = int(args.device)
+
     model = YOLO(args.model)
     model.add_callback("on_train_end", log_best_model)
     model.train(
@@ -45,9 +56,9 @@ def main() -> None:
         batch=args.batch,
         name=args.name,
         project="mcdetect",
-        workers=2,  # Keep low to prevent system RAM OOM
+        workers=4 if isinstance(device, list) else 2,
         imgsz=640,
-        device=0,
+        device=device,
     )
 
 
