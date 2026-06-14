@@ -32,6 +32,9 @@ mkdir -p "$XDG_RUNTIME_DIR" "$UV_CACHE_DIR"
 test -d .venv || uv venv .venv --python 3.14
 uv sync
 
+export YOLO_CONFIG_DIR="$PROJECT_ROOT/.ultralytics"
+uv run yolo settings wandb=True
+
 # ── Defaults (overridable via --export) ────────────────────────────
 MODEL=${MODEL:-weights/rtdetr-l.pt}
 BATCH=${BATCH:-16}
