@@ -155,6 +155,11 @@ python scripts/detect_video.py gameplay.mp4 \
 - Bounding boxes + class + confidence drawn per frame
 
 // ============================================================
+#focus-slide[
+  Demo
+]
+
+// ============================================================
 == Results
 
 #set text(size: 19pt)
