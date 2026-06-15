@@ -1,0 +1,52 @@
+{
+  "runs": [
+    {
+      "label": "YOLOv8n",
+      "path": "uwr-ksai/mcdetect/yolov8n-2gpu_20260614_163618",
+      "state": "finished",
+      "runtime_min": 10.3,
+      "epochs": 100,
+      "fps": 285.6,
+      "map50": 0.89501,
+      "map5095": 0.67018,
+      "precision": 0.93855,
+      "recall": 0.81422
+    },
+    {
+      "label": "YOLO26m",
+      "path": "uwr-ksai/mcdetect/yolo26m-2gpu-3_20260614_164753",
+      "state": "finished",
+      "runtime_min": 22.1,
+      "epochs": 100,
+      "fps": 92.1,
+      "map50": 0.91959,
+      "map5095": 0.68285,
+      "precision": 0.86825,
+      "recall": 0.90554
+    },
+    {
+      "label": "RT-DETR-L",
+      "path": "uwr-ksai/mcdetect/rtdetr-l-2gpu_20260614_171214",
+      "state": "finished",
+      "runtime_min": 47.9,
+      "epochs": 100,
+      "fps": 80.0,
+      "map50": 0.92156,
+      "map5095": 0.69259,
+      "precision": 0.88857,
+      "recall": 0.8989
+    },
+    {
+      "label": "RT-DETR-X",
+      "path": "uwr-ksai/mcdetect/rtdetr-x-2gpu_20260614_180245",
+      "state": "finished",
+      "runtime_min": 87.4,
+      "epochs": 100,
+      "fps": 83.2,
+      "map50": 0.84818,
+      "map5095": 0.61959,
+      "precision": 0.86807,
+      "recall": 0.80851
+    }
+  ]
+}

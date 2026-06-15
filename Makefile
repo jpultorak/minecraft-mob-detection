@@ -3,7 +3,7 @@ ifneq ($(findstring /ziob/,$(UV_CACHE_DIR)),)
     export UV_CACHE_DIR := $(subst /ziob/,/Ziob/,$(UV_CACHE_DIR))
 endif
 
-.PHONY: help setup data resume detect-video slurm-rtdetr-l slurm-rtdetr-x slurm-yolov8n slurm-yolo26m slurm-submit-all
+.PHONY: help setup data resume detect-video fetch-results presentation slurm-rtdetr-l slurm-rtdetr-x slurm-yolov8n slurm-yolo26m slurm-submit-all
 
 help:
 	@echo "Available commands:"
@@ -11,10 +11,12 @@ help:
 	@echo "  make data            - Download, filter to 5 classes, and rebalance the dataset splits"
 	@echo "  make resume          - Resume training from the last checkpoint"
 	@echo "  make detect-video VIDEO=path/to/video.mp4  - Run mob detection on a video"
-	@echo "  make slurm-rtdetr-l  - Submit RT-DETR-L training on Slurm (2x RTX 3080)"
-	@echo "  make slurm-rtdetr-x  - Submit RT-DETR-X training on Slurm (2x RTX 3080)"
-	@echo "  make slurm-yolov8n   - Submit YOLOv8n training on Slurm (2x RTX 3080)"
-	@echo "  make slurm-yolo26m   - Submit YOLO26m training on Slurm (2x RTX 3080)"
+	@echo "  make fetch-results   - Fetch W&B run metrics into presentation/results.json"
+	@echo "  make presentation    - Fetch results and compile presentation/slides.pdf"
+	@echo "  make slurm-rtdetr-l  - Submit RT-DETR-L training on Slurm (2x RTX 3090)"
+	@echo "  make slurm-rtdetr-x  - Submit RT-DETR-X training on Slurm (2x RTX 3090)"
+	@echo "  make slurm-yolov8n   - Submit YOLOv8n training on Slurm (2x RTX 3090)"
+	@echo "  make slurm-yolo26m   - Submit YOLO26m training on Slurm (2x RTX 3090)"
 	@echo "  make slurm-submit-all - Submit YOLOv8n, YOLO26m, RT-DETR-L, and RT-DETR-X training jobs to Slurm"
 
 setup:
@@ -26,6 +28,13 @@ data:
 
 detect-video:
 	uv run python scripts/detect_video.py $(VIDEO)
+
+fetch-results:
+	uv run python scripts/fetch_results.py
+
+presentation: fetch-results
+	cd presentation && typst compile slides.typ
+	@echo "Built presentation/slides.pdf"
 
 slurm-rtdetr-l:
 	sbatch --export=ALL,MODEL=weights/rtdetr-l.pt,BATCH=16,EPOCHS=100,RUN_NAME=rtdetr-l-2gpu \

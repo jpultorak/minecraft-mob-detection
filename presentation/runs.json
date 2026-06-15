@@ -1,0 +1,22 @@
+{
+  "entity": "uwr-ksai",
+  "project": "mcdetect",
+  "runs": [
+    {
+      "label": "YOLOv8n",
+      "path": "uwr-ksai/mcdetect/yolov8n-2gpu_20260614_163618"
+    },
+    {
+      "label": "YOLO26m",
+      "path": "uwr-ksai/mcdetect/yolo26m-2gpu-3_20260614_164753"
+    },
+    {
+      "label": "RT-DETR-L",
+      "path": "uwr-ksai/mcdetect/rtdetr-l-2gpu_20260614_171214"
+    },
+    {
+      "label": "RT-DETR-X",
+      "path": "uwr-ksai/mcdetect/rtdetr-x-2gpu_20260614_180245"
+    }
+  ]
+}
