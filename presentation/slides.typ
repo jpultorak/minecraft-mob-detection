@@ -22,7 +22,6 @@
 #let results = json("results.json").runs
 #let pct(v) = if v == none { [—] } else { [#calc.round(v * 100, digits: 1)%] }
 #let mins(v) = if v == none { [—] } else { [#v min] }
-#let fps(v) = if v == none { [—] } else { [#v] }
 
 #title-slide()
 
@@ -96,7 +95,7 @@ $ L = lambda_("loc") L_("loc")(b, hat(b)) + lambda_("cls") L_("cls")(c, hat(p)) 
 
 - *Controlled visual domain* — consistent block-art style, limited palette, predictable lighting
 - *No privacy issues* — fully synthetic data
-- *Challenging enough* — occlusion, scale variation, many classes, varying biomes & lighting
+- *Challenging enough* — scale variation, many classes, varying biomes & lighting
 - *Data availability* — existing datasets
 - *Fun & engaging* — motivates thorough experimentation
 
@@ -105,8 +104,10 @@ $ L = lambda_("loc") L_("loc")(b, hat(b)) + lambda_("cls") L_("cls")(c, hat(p)) 
 
 *Source:* #link("https://universe.roboflow.com/search?q=minecraft")[Minecraft datasets on Roboflow] — community-curated, with labeled bounding boxes.
 
-- Pre-annotated images split into train / valid / test
-- Inference at 640×640 px (`imgsz=640`)
++ Download from Roboflow; pool all images across original splits
++ Filter to images containing at least one of our 5 target classes
++ Reshuffle (`seed=42`) and split *70% / 15% / 15%* into train / valid / test
++ Training and inference at 640×640 px (`imgsz=640`)
 
 #v(0.6em)
 *Classes (5):* pig, chicken, cow, creeper, sheep
@@ -132,10 +133,9 @@ $ L = lambda_("loc") L_("loc")(b, hat(b)) + lambda_("cls") L_("cls")(c, hat(p)) 
     - Scheduled via *Slurm* (`sbatch`)
   ],
   [
-    *Tooling & Augmentation*
+    *Tooling*
     - PyTorch + Ultralytics
     - Tracking: Weights & Biases
-    - Mosaic, flips, brightness/contrast
   ],
 )
 
@@ -159,12 +159,12 @@ python scripts/detect_video.py gameplay.mp4 \
 
 #set text(size: 19pt)
 #table(
-  columns: (1.1fr, auto, auto, auto, auto, auto, auto),
+  columns: (1.2fr, auto, auto, auto, auto, auto),
   inset: 9pt,
-  align: (left, center, center, center, center, center, center),
+  align: (left, center, center, center, center, center),
   stroke: 0.5pt + gray,
   table.header(
-    [*Model*], [*mAP\@0.5*], [*mAP\@0.5:0.95*], [*P*], [*R*], [*FPS*], [*Train time*],
+    [*Model*], [*mAP\@0.5*], [*mAP\@0.5:0.95*], [*P*], [*R*], [*Train time*],
   ),
   ..results.map(r => (
     [#r.label],
@@ -172,14 +172,13 @@ python scripts/detect_video.py gameplay.mp4 \
     pct(r.at("map5095", default: none)),
     pct(r.at("precision", default: none)),
     pct(r.at("recall", default: none)),
-    fps(r.at("fps", default: none)),
     mins(r.at("runtime_min", default: none)),
   )).flatten()
 )
 
 #v(0.4em)
 #text(size: 15pt, fill: gray)[
-  All runs: 100 epochs, 2× RTX 3090, 640×640 px. P = precision, R = recall. FPS = PyTorch inference.
+  All runs: 100 epochs, 2× RTX 3090, 640×640 px. P = precision, R = recall.
 ]
 
 // ============================================================
@@ -188,12 +187,9 @@ python scripts/detect_video.py gameplay.mp4 \
 #set text(size: 20pt)
 
 - *RT-DETR-L* — best accuracy (92.2% mAP\@0.5); *YOLO26m* nearly matches it and trains 2× faster — better tradeoff for real-time gameplay
-- *YOLOv8n* — fastest (286 FPS) but lowest recall (81%) — conservative, misses more mobs
+- *YOLOv8n* — smallest model and fastest to train, but lowest recall (81%) — conservative, misses more mobs
 - *RT-DETR-X* underperformed despite size — likely smaller batch (8 vs 16) and GPU memory limits
 - mAP\@0.5:0.95 (62–69%) lags mAP\@0.5 — *tight bounding boxes* are harder than finding mobs
-
-#v(0.6em)
-*Limitations:* 5 classes only; FPS is a PyTorch benchmark, not full gameplay pipeline; batch sizes varied across models
 
 // ============================================================
 == Conclusions

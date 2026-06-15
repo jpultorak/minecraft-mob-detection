@@ -22,7 +22,6 @@ METRIC_KEYS = {
     "map5095": ["metrics/mAP50-95(B)", "metrics/mAP_0.5:0.95", "metrics/mAP50-95"],
     "precision": ["metrics/precision(B)", "metrics/precision"],
     "recall": ["metrics/recall(B)", "metrics/recall"],
-    "inference_ms": ["model/speed_PyTorch(ms)"],
 }
 
 
@@ -38,13 +37,6 @@ def runtime_minutes(run) -> float | None:
     runtime = run.summary.get("_runtime")
     if isinstance(runtime, (int, float)):
         return round(runtime / 60.0, 1)
-    return None
-
-
-def inference_fps(summary: dict) -> float | None:
-    ms = pick(summary, METRIC_KEYS["inference_ms"])
-    if ms and ms > 0:
-        return round(1000.0 / ms, 1)
     return None
 
 
@@ -66,7 +58,6 @@ def main() -> None:
 
         summary = dict(run.summary)
         metrics = {name: pick(summary, keys) for name, keys in METRIC_KEYS.items()}
-        fps = inference_fps(summary)
         results.append(
             {
                 "label": label,
@@ -74,13 +65,12 @@ def main() -> None:
                 "state": run.state,
                 "runtime_min": runtime_minutes(run),
                 "epochs": run.config.get("epochs"),
-                "fps": fps,
-                **{k: v for k, v in metrics.items() if k != "inference_ms"},
+                **metrics,
             }
         )
         print(
             f"[ok] {label}: mAP50={metrics['map50']} "
-            f"mAP50-95={metrics['map5095']} fps={fps} runtime={runtime_minutes(run)}m"
+            f"mAP50-95={metrics['map5095']} runtime={runtime_minutes(run)}m"
         )
 
     RESULTS_OUT.write_text(json.dumps({"runs": results}, indent=2) + "\n")
